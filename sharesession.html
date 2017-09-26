@@ -1,0 +1,26 @@
+{% extends "notebook.html" %}
+
+{% block stylesheet %} {{super()}} {% endblock %}
+
+{% block bodyclasses %}notebook_app {{super()}}{% endblock %}
+
+{% block params %}
+
+{{super()}}
+data-session-path="{{session_path | urlencode}}"
+{% endblock %}
+
+{% block headercontainer %} {{super()}} {% endblock headercontainer %}
+
+{% block header %} {{super()}} {% endblock header %}
+
+{% block site %} {{super()}} {% endblock %}
+
+{% block after_site %} {{super()}} {% endblock %}
+
+{% block script %}
+
+<script src="/nbextensions/share_session/main.js" type="text/javascript" charset="utf-8"></script>
+{{super()}}
+
+{% endblock %}
