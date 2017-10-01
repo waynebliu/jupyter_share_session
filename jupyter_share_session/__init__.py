@@ -9,8 +9,8 @@ from notebook.utils import url_escape
 import notebook.notebook.handlers
 
 import os
-mypath = os.path.dirname(__file__)
-print('my extra template dir',mypath)
+MYPATH = os.path.dirname(__file__)
+print('my extra template dir',MYPATH)
 
 class ShareSessionHandler(IPythonHandler):
     @web.authenticated
@@ -19,49 +19,50 @@ class ShareSessionHandler(IPythonHandler):
         redirects to the '/files/' handler if the name is not given."""
 
         # brute force hack to add . to template path
-        if mypath not in self.settings['jinja2_env'].loader.searchpath:
-            self.settings['jinja2_env'].loader.searchpath.append(mypath)
+        if MYPATH not in self.settings['jinja2_env'].loader.searchpath:
+            self.settings['jinja2_env'].loader.searchpath.append(MYPATH)
         print(self.settings['jinja2_env'].loader.searchpath)
 
         # split two-part urls: <sessionpath>/index.ipynb=<notebookpath>
         cm = self.contents_manager
-        splitpath = path.split('/index.ipynb=')
-        if len(splitpath) == 2:
-            session_path = splitpath[0]+'/index.ipynb'
-        else:
-            # try to use ./index.ipynb if it exists in the directory
-            try:
-                session_path = path.rsplit('/', 1)[0]+'/index.ipynb'
-                model = cm.get(session_path, content=False)
-            except web.HTTPError as e:
-                if e.status_code == 404:
-                    # no index.ipynb - use path as session
-                    session_path = path
-                else:
-                    raise
-        path = path.strip('/')
-        session_path.strip('/')
-        
+        session_path, notebook_path = get_session_notebook_paths(path,cm)
+        notebook_path = notebook_path.strip('/')
+        session_path = session_path.strip('/')
+        download_path = notebook_path
+
         # will raise 404 on not found
         try:
-            model = cm.get(path, content=False)
+            model = cm.get(notebook_path, content=False)
         except web.HTTPError as e:
             if e.status_code == 404:
-                # 404 - check if it's a url that we can try to download
-                # path and save to download
-                #import urllib
-                #download_path = session_path.rsplit('/', 1)[0]+'/Downloads/'
-                #url = urllib.open(path)
-                raise
+                # 404 - check if "opting into" new behavior
+                if session_path.endswith('/index.ipynb'):
+                    download_path = try_download_url(session_path, notebook_path)
+                if download_path == notebook_path:
+                    # fall back to original behavior
+                    if e.status_code == 404 and 'files' in path.split('/'):
+                        # 404, but '/files/' in URL, let FilesRedirect take care of it
+                        return FilesRedirectHandler.redirect_to_files(self, path)
+                else:
+                    raise
             else:
                 raise
         if model['type'] != 'notebook':
             # not a notebook, redirect to files
             return FilesRedirectHandler.redirect_to_files(self, path)
-        name = path.rsplit('/', 1)[-1]
+
+        # url is just path unless "opted into" new behavior
+        address_path = path
+        if '.ipynb=' not in path and session_path.endswith('/index.ipynb'):
+            address_path=session_path+'='+notebook_path
+        address_path = address_path.strip('/')
+        print(session_path, notebook_path, download_path, address_path)
+
+        name = notebook_path.rsplit('/', 1)[-1]
         self.write(self.render_template('sharesession.html',
-            notebook_path=path,
+            notebook_path=notebook_path,
             session_path=session_path,
+            address_path=address_path,
             notebook_name=name,
             kill_kernel=False,
             mathjax_url=self.mathjax_url,
@@ -69,6 +70,47 @@ class ShareSessionHandler(IPythonHandler):
             )
         )
 
+def get_session_notebook_paths(path,cm):
+    splitpath = path.split('.ipynb=')
+    if len(splitpath) == 2:
+        return splitpath[0]+'.ipynb', splitpath[1]
+    # try to use ./index.ipynb if it exists in the directory
+    try:
+        session_path = path.rsplit('/', 1)[0]+'/index.ipynb'
+        cm.get(session_path, content=False)
+        return session_path, path
+    except web.HTTPError as e:
+        if e.status_code == 404:
+            # no index.ipynb - use path as session
+            return path,path
+        else:
+            raise
+
+def try_download_url(session_path, notebook_path):
+    '''
+    '''
+    # if it's a url that we can try to download file and save to 
+    # a download location
+    from urllib.parse import urlparse
+    from urllib.request import urlopen
+    try:
+        download_base = session_path.rsplit('/', 1)[0]+'/Downloads/'
+        result = urlparse(notebook_path)
+        if not result.scheme:
+            return notebook_path,None
+        respath,resname = os.path.split(result.path)
+        download_path = download_base+respath
+        os.makedirs(download_path, exist_ok=True)
+        resfile = os.path.join(download_path,resname)
+        if os.path.exists(resfile):
+            return resfile
+        req = urlopen(notebook_path)
+        with open(resfile,'wb') as f:
+            f.write( req.read() )
+        return resfile, model
+    except Exception as e:
+        print(e)
+    return notebook_path,None
 
 
 from notebook.utils import url_path_join
