@@ -1,6 +1,7 @@
 import os
 from tornado import web
 HTTPError = web.HTTPError
+from tornado import httpclient
 
 from notebook.base.handlers import (
     IPythonHandler, FilesRedirectHandler, path_regex,
@@ -37,14 +38,17 @@ class ShareSessionHandler(IPythonHandler):
             if e.status_code == 404:
                 # 404 - check if "opting into" new behavior
                 if session_path.endswith('/index.ipynb'):
-                    download_path = try_download_url(session_path, notebook_path)
-                if download_path == notebook_path:
+                    download_path = try_download_url(self, session_path, notebook_path)
+                if download_path != notebook_path:
+                    # downloaded something - let's try to open it as notebook
+                    model = cm.get(download_path, content=False)
+                else:
                     # fall back to original behavior
                     if e.status_code == 404 and 'files' in path.split('/'):
                         # 404, but '/files/' in URL, let FilesRedirect take care of it
                         return FilesRedirectHandler.redirect_to_files(self, path)
-                else:
-                    raise
+                    else:
+                        raise
             else:
                 raise
         if model['type'] != 'notebook':
@@ -60,7 +64,7 @@ class ShareSessionHandler(IPythonHandler):
 
         name = notebook_path.rsplit('/', 1)[-1]
         self.write(self.render_template('sharesession.html',
-            notebook_path=notebook_path,
+            notebook_path=download_path,
             session_path=session_path,
             address_path=address_path,
             notebook_name=name,
@@ -86,31 +90,45 @@ def get_session_notebook_paths(path,cm):
         else:
             raise
 
-def try_download_url(session_path, notebook_path):
+def try_download_url(self, session_path, notebook_path):
     '''
     '''
     # if it's a url that we can try to download file and save to 
     # a download location
-    from urllib.parse import urlparse
+    from urllib.parse import urlparse, quote, urlencode
     from urllib.request import urlopen
     try:
         download_base = session_path.rsplit('/', 1)[0]+'/Downloads/'
         result = urlparse(notebook_path)
         if not result.scheme:
-            return notebook_path,None
-        respath,resname = os.path.split(result.path)
-        download_path = download_base+respath
+            print('not a url',notebook_path)
+            return notebook_path
+        respath,resname = os.path.split(quote(result.path))
+        download_path = download_base + quote(result.netloc) + respath
         os.makedirs(download_path, exist_ok=True)
         resfile = os.path.join(download_path,resname)
         if os.path.exists(resfile):
+            print('file exists',resfile)
             return resfile
-        req = urlopen(notebook_path)
+        print('fetching',notebook_path,'to',resfile)
+        http_client = httpclient.HTTPClient()
+        response = http_client.fetch( 
+            "%s://%s%s" % (result.scheme,
+                           result.netloc,
+                           quote(result.path)),
+            method=self.request.method,
+            #body=self.request.body,
+            headers=self.request.headers,
+            )
+        print('saving file',resfile)
         with open(resfile,'wb') as f:
-            f.write( req.read() )
-        return resfile, model
+            f.write( response.body )
+        http_client.close()
+        return resfile
     except Exception as e:
         print(e)
-    return notebook_path,None
+    print('got error',notebook_path)
+    return notebook_path
 
 
 from notebook.utils import url_path_join
@@ -127,6 +145,7 @@ def load_jupyter_server_extension(nb_server_app):
 
     web_app = nb_server_app.web_app
     host_pattern = '.*$'
-    route_pattern = url_path_join(web_app.settings['base_url'], '/sharesession%s' % path_regex)
+    route_pattern = url_path_join(web_app.settings['base_url'], 
+                                  r'notebooks(?P<path>.*)')
     web_app.add_handlers(host_pattern, [(route_pattern, ShareSessionHandler)])
 
