@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='jupyter_share_session',
-      version='0.1',
+      version='0.2',
       description='Split a notebook into multiple files.',
       url='http://github.com/waynebliu/jupyter_share_session/',
       author='Wayne Liu',
