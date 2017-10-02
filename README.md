@@ -63,13 +63,8 @@ TBD
 # Issues
 
 1. Downloading urls may not be working completely.
-- The implementation is fragile and hack-y. If the implementation of Jupyter notebook changes, it could break.
+- The implementation is necessarily fragile and dependent on implementation details of Jupyter notebook.
     - It would be better if this behavior was included in JupyterLab directly, or there would be cleaner hooks to implement this as an extension.
 - Integration with mybinder.org
 - Conda installation?
 - Integration with jupyter_contrib_extensions?
-
-
-```python
-
-```
