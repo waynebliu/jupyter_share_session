@@ -19,14 +19,13 @@ class ShareSessionHandler(IPythonHandler):
         """get renders the notebook template if a name is given, or 
         redirects to the '/files/' handler if the name is not given."""
 
-        # brute force hack to add . to template path
-        if MYPATH not in self.settings['jinja2_env'].loader.searchpath:
-            self.settings['jinja2_env'].loader.searchpath.append(MYPATH)
-        print(self.settings['jinja2_env'].loader.searchpath)
-
         # split two-part urls: <sessionpath>/index.ipynb=<notebookpath>
         cm = self.contents_manager
         session_path, notebook_path = get_session_notebook_paths(path,cm)
+        if session_path == notebook_path:
+            # fall back to old behavior
+            return self.old_get(path)
+
         notebook_path = notebook_path.strip('/')
         session_path = session_path.strip('/')
         download_path = notebook_path
@@ -36,30 +35,25 @@ class ShareSessionHandler(IPythonHandler):
             model = cm.get(notebook_path, content=False)
         except web.HTTPError as e:
             if e.status_code == 404:
-                # 404 - check if "opting into" new behavior
-                if session_path.endswith('/index.ipynb'):
-                    download_path = try_download_url(self, session_path, notebook_path)
+                # 404 file not found by cm - let's try to download 
+                download_path = try_download_url(self, session_path, notebook_path)
                 if download_path != notebook_path:
-                    # downloaded something - let's try to open it as notebook
+                    # OK, downloaded something - let's try to open it as notebook
                     model = cm.get(download_path, content=False)
                 else:
-                    # fall back to original behavior
-                    if e.status_code == 404 and 'files' in path.split('/'):
-                        # 404, but '/files/' in URL, let FilesRedirect take care of it
-                        return FilesRedirectHandler.redirect_to_files(self, path)
-                    else:
-                        raise
+                    return FilesRedirectHandler.redirect_to_files(self, path)
             else:
                 raise
         if model['type'] != 'notebook':
             # not a notebook, redirect to files
             return FilesRedirectHandler.redirect_to_files(self, path)
 
-        # url is just path unless "opted into" new behavior
-        address_path = path
-        if '.ipynb=' not in path and session_path.endswith('/index.ipynb'):
-            address_path=session_path+'='+notebook_path
-        address_path = address_path.strip('/')
+        # brute force hack to add this dir to template path
+        if MYPATH not in self.settings['jinja2_env'].loader.searchpath:
+            self.settings['jinja2_env'].loader.searchpath.append(MYPATH)
+        print(self.settings['jinja2_env'].loader.searchpath)
+
+        address_path = (session_path+'='+notebook_path).strip('/')
         print(session_path, notebook_path, download_path, address_path)
 
         name = notebook_path.rsplit('/', 1)[-1]
@@ -84,11 +78,8 @@ def get_session_notebook_paths(path,cm):
         cm.get(session_path, content=False)
         return session_path, path
     except web.HTTPError as e:
-        if e.status_code == 404:
-            # no index.ipynb - use path as session
-            return path,path
-        else:
-            raise
+        # no index.ipynb, or some other problem - use path as session
+        return path,path
 
 def try_download_url(self, session_path, notebook_path):
     '''
@@ -141,6 +132,7 @@ def load_jupyter_server_extension(nb_server_app):
     """
 
     ### WHOA - MONKEY PATCH THE NOTEBOOK HANDLER!
+    ShareSessionHandler.old_get = notebook.notebook.handlers.NotebookHandler.get
     notebook.notebook.handlers.NotebookHandler.get = ShareSessionHandler.get
 
     web_app = nb_server_app.web_app
