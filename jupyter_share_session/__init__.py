@@ -22,7 +22,7 @@ class ShareSessionHandler(IPythonHandler):
         # split two-part urls: <sessionpath>/index.ipynb=<notebookpath>
         cm = self.contents_manager
         session_path, notebook_path = get_session_notebook_paths(path,cm)
-        if session_path == notebook_path:
+        if session_path == notebook_path and not session_path.endswith('/index.ipynb'):
             # fall back to old behavior
             return self.old_get(path)
 
