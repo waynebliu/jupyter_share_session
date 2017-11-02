@@ -1,17 +1,10 @@
-import os
 from tornado import web
-HTTPError = web.HTTPError
-from tornado import httpclient
-
 from notebook.base.handlers import (
-    IPythonHandler, FilesRedirectHandler, path_regex,
+    IPythonHandler, FilesRedirectHandler
 )
-from notebook.utils import url_escape
-import notebook.notebook.handlers
 
 import os
 MYPATH = os.path.dirname(__file__)
-print('my extra template dir',MYPATH)
 
 class ShareSessionHandler(IPythonHandler):
     @web.authenticated
@@ -86,6 +79,7 @@ def try_download_url(self, session_path, notebook_path):
     '''
     # if it's a url that we can try to download file and save to 
     # a download location
+    from tornado import httpclient
     from urllib.parse import urlparse, quote, urlencode
     from urllib.request import urlopen
     try:
@@ -122,7 +116,6 @@ def try_download_url(self, session_path, notebook_path):
     return notebook_path
 
 
-from notebook.utils import url_path_join
 def load_jupyter_server_extension(nb_server_app):
     """
     Called when the extension is loaded.
@@ -130,8 +123,11 @@ def load_jupyter_server_extension(nb_server_app):
     Args:
         nb_server_app (NotebookWebApplication): handle to the Notebook webserver instance.
     """
+    print('my extra template dir',MYPATH)
 
     ### WHOA - MONKEY PATCH THE NOTEBOOK HANDLER!
+    import notebook.notebook.handlers
+    from notebook.utils import url_path_join
     ShareSessionHandler.old_get = notebook.notebook.handlers.NotebookHandler.get
     notebook.notebook.handlers.NotebookHandler.get = ShareSessionHandler.get
 
@@ -140,4 +136,10 @@ def load_jupyter_server_extension(nb_server_app):
     route_pattern = url_path_join(web_app.settings['base_url'], 
                                   r'notebooks(?P<path>.*)')
     web_app.add_handlers(host_pattern, [(route_pattern, ShareSessionHandler)])
+
+def load_ipython_extension(ipython):
+    from .magic import GlobalVals
+    import importlib
+    ipython.register_magics(GlobalVals(ipython))
+
 
