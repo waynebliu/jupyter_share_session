@@ -29,7 +29,7 @@ class ShareSessionHandler(IPythonHandler):
         except web.HTTPError as e:
             if e.status_code == 404:
                 # 404 file not found by cm - let's try to download 
-                download_path = try_download_url(self, session_path, notebook_path)
+                download_path = try_download_url(self, session_path, notebook_path, cm)
                 if download_path != notebook_path:
                     # OK, downloaded something - let's try to open it as notebook
                     model = cm.get(download_path, content=False)
@@ -74,7 +74,7 @@ def get_session_notebook_paths(path,cm):
         # no index.ipynb, or some other problem - use path as session
         return path,path
 
-def try_download_url(self, session_path, notebook_path):
+def try_download_url(self, session_path, notebook_path, cm):
     '''
     '''
     # if it's a url that we can try to download file and save to 
@@ -90,11 +90,14 @@ def try_download_url(self, session_path, notebook_path):
             return notebook_path
         respath,resname = os.path.split(quote(result.path))
         download_path = download_base + quote(result.netloc) + respath
-        os.makedirs(download_path, exist_ok=True)
         resfile = os.path.join(download_path,resname)
-        if os.path.exists(resfile):
+        try:
+            cm.get(resfile, content=False)
             print('file exists',resfile)
             return resfile
+        except:
+            pass
+
         print('fetching',notebook_path,'to',resfile)
         http_client = httpclient.HTTPClient()
         response = http_client.fetch( 
@@ -105,10 +108,21 @@ def try_download_url(self, session_path, notebook_path):
             #body=self.request.body,
             headers=self.request.headers,
             )
-        print('saving file',resfile)
-        with open(resfile,'wb') as f:
-            f.write( response.body )
+        print('saving notebook',resfile)
+        model = dict(type = 'notebook', format = 'json')
+        import json
+        model['content'] = json.loads(response.body);
         http_client.close()
+        # recursively create directory first
+        dirs = ''
+        for p in [download_base,quote(result.netloc)]+respath.split('/'):
+            if p == '':
+                continue
+            dirs += '/'+p
+            print('create directory',dirs)
+            cm.save({'type':'directory'},dirs)
+        # save it
+        cm.save(model,resfile)
         return resfile
     except Exception as e:
         print(e)
