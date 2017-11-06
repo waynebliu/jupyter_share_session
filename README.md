@@ -1,16 +1,19 @@
 
 # Use cases
 
-1. You want to split up your notebook into multiple files. Simply create a file "index.ipynb" in the directory where the files will be.
+1. You want to split up your notebook into multiple files. 
+    - Simply create a file "index.ipynb" in the directory where the files will be.
     - When you open a file in this directory, it will share the same session (same running kernel) as all the others
-    - If the url path of the file you open is originally
-        
+    - Note if the url path of the file you open is originally
+
             http://<hostname>:<port>/notebooks/<projectpath>/<file>.ipynb
-      then it will be changed to 
+      then brower address bar will be changed to 
 
             http://<hostname>:<port>/notebooks/<projectpath>/index.ipynb=<projectpath>/<file>.ipynb
+      and the browser window will title change to "`<projectdir>:<file>`"
 
-2. You have some common files that you want to share among multiple projects (i.e. in multiple notebook directories).  You can open the common file using url path:
+2. You have some common files that you want to share among multiple projects (i.e. in multiple notebook directories).
+    - You can open the common file using url path:
 
             <projectpath>/index.ipynb=<commonutilpath>/<utilfile>.ipynb
     - The utilfile.ipynb page will run in the same kernel.
@@ -62,9 +65,9 @@ TBD
 
 # Issues
 
-1. Downloading urls may not be working completely.
-- The implementation is necessarily fragile and dependent on implementation details of Jupyter notebook.
+1. The implementation is necessarily fragile and dependent on implementation details of Jupyter notebook.
     - It would be better if this behavior was included in JupyterLab directly, or there would be cleaner hooks to implement this as an extension.
 - Integration with mybinder.org
 - Conda installation?
 - Integration with jupyter_contrib_extensions?
+- Integration with jupyter_cms?
